@@ -1,0 +1,84 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  EKS cluster for running Llama LLM workloads.
+  Imports VPC networking resources from the local-llm-llama-vpc stack.
+
+Resources:
+  EksClusterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: local-llm-llama-eks-cluster-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: eks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+        - arn:aws:iam::aws:policy/AmazonEKSVPCResourceController
+
+  EksCluster:
+    Type: AWS::EKS::Cluster
+    DependsOn: EksClusterRole
+    Properties:
+      Name: local-llm-llama-eks
+      Version: '1.31'
+      RoleArn: !GetAtt EksClusterRole.Arn
+      ResourcesVpcConfig:
+        SubnetIds:
+          - !ImportValue local-llm-llama-vpc-PublicSubnet1Id
+          - !ImportValue local-llm-llama-vpc-PublicSubnet2Id
+          - !ImportValue local-llm-llama-vpc-PrivateSubnet1Id
+          - !ImportValue local-llm-llama-vpc-PrivateSubnet2Id
+        EndpointPublicAccess: true
+        EndpointPrivateAccess: true
+      Tags:
+        - Key: Name
+          Value: local-llm-llama-eks
+
+  OIDCProvider:
+    Type: AWS::IAM::OIDCProvider
+    DependsOn: EksCluster
+    Properties:
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 9e99a48a9960b14926bb7f3b02e22da2b0ab7280
+      Url: !GetAtt EksCluster.OpenIdConnectIssuerUrl
+
+Outputs:
+  ClusterName:
+    Description: EKS cluster name
+    Value: local-llm-llama-eks
+    Export:
+      Name: local-llm-llama-eks-ClusterName
+
+  ClusterEndpoint:
+    Description: EKS cluster API endpoint
+    Value: !GetAtt EksCluster.Endpoint
+    Export:
+      Name: local-llm-llama-eks-ClusterEndpoint
+
+  ClusterSecurityGroupId:
+    Description: Security group ID attached to the EKS cluster
+    Value: !GetAtt EksCluster.ClusterSecurityGroupId
+    Export:
+      Name: local-llm-llama-eks-ClusterSecurityGroupId
+
+  OIDCProviderArn:
+    Description: ARN of the OIDC identity provider
+    Value: !GetAtt OIDCProvider.Arn
+    Export:
+      Name: local-llm-llama-eks-OIDCProviderArn
+
+  OIDCProviderUrl:
+    Description: OIDC provider URL without https:// prefix
+    Value: !Select
+      - 1
+      - !Split
+        - '://'
+        - !GetAtt EksCluster.OpenIdConnectIssuerUrl
+    Export:
+      Name: local-llm-llama-eks-OIDCProviderUrl

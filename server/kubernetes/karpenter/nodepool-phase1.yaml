@@ -1,0 +1,33 @@
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: gpu-phase1
+spec:
+  template:
+    metadata:
+      labels:
+        workload-type: gpu-inference
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: gpu-nodes
+      requirements:
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values: ["g6.xlarge"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot", "on-demand"]
+        - key: topology.kubernetes.io/zone
+          operator: In
+          values: ["us-west-2a", "us-west-2b", "us-west-2c", "us-west-2d"]
+      taints:
+        - key: nvidia.com/gpu
+          effect: NoSchedule
+  limits:
+    nvidia.com/gpu: "4"
+  disruption:
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 60s
+  weight: 10

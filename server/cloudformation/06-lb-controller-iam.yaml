@@ -1,0 +1,275 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  AWS Load Balancer Controller IAM Role and Policy for llama EKS cluster.
+  Stack name: local-llm-llama-lb-controller-iam
+
+Parameters:
+  OIDCProviderArn:
+    Type: String
+    Description: ARN of the EKS OIDC provider
+  OIDCProviderUrl:
+    Type: String
+    Description: OIDC provider URL without https:// prefix
+
+Resources:
+  LBControllerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: local-llm-llama-eks-lb-controller-role
+      AssumeRolePolicyDocument: !Sub |
+        {
+          "Version": "2012-10-17",
+          "Statement": [{
+            "Effect": "Allow",
+            "Principal": {"Federated": "${OIDCProviderArn}"},
+            "Action": "sts:AssumeRoleWithWebIdentity",
+            "Condition": {
+              "StringEquals": {
+                "${OIDCProviderUrl}:sub": "system:serviceaccount:kube-system:aws-load-balancer-controller",
+                "${OIDCProviderUrl}:aud": "sts.amazonaws.com"
+              }
+            }
+          }]
+        }
+      Policies:
+        - PolicyName: LBControllerPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: IAMCreateServiceLinkedRole
+                Effect: Allow
+                Action:
+                  - iam:CreateServiceLinkedRole
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    iam:AWSServiceName: elasticloadbalancing.amazonaws.com
+
+              - Sid: EC2DescribeActions
+                Effect: Allow
+                Action:
+                  - ec2:DescribeAccountAttributes
+                  - ec2:DescribeAddresses
+                  - ec2:DescribeAvailabilityZones
+                  - ec2:DescribeInternetGateways
+                  - ec2:DescribeVpcs
+                  - ec2:DescribeVpcPeeringConnections
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeInstances
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DescribeTags
+                  - ec2:DescribeCoipPools
+                  - ec2:GetCoipPoolUsage
+                Resource: '*'
+
+              - Sid: EC2SecurityGroupIngress
+                Effect: Allow
+                Action:
+                  - ec2:AuthorizeSecurityGroupIngress
+                  - ec2:RevokeSecurityGroupIngress
+                Resource: '*'
+
+              - Sid: EC2CreateSecurityGroup
+                Effect: Allow
+                Action:
+                  - ec2:CreateSecurityGroup
+                Resource: '*'
+
+              - Sid: EC2CreateTagsOnSGCreation
+                Effect: Allow
+                Action:
+                  - ec2:CreateTags
+                Resource: !Sub 'arn:aws:ec2:*:${AWS::AccountId}:security-group/*'
+                Condition:
+                  StringEquals:
+                    ec2:CreateAction: CreateSecurityGroup
+                  'Null':
+                    aws:RequestTag/elbv2.k8s.aws/cluster: 'false'
+
+              - Sid: EC2CreateDeleteTagsSG
+                Effect: Allow
+                Action:
+                  - ec2:CreateTags
+                  - ec2:DeleteTags
+                Resource: !Sub 'arn:aws:ec2:*:${AWS::AccountId}:security-group/*'
+                Condition:
+                  'Null':
+                    aws:RequestTag/elbv2.k8s.aws/cluster: 'true'
+                    aws:ResourceTag/elbv2.k8s.aws/cluster: 'false'
+
+              - Sid: EC2DeleteSecurityGroup
+                Effect: Allow
+                Action:
+                  - ec2:DeleteSecurityGroup
+                Resource: '*'
+                Condition:
+                  'Null':
+                    aws:ResourceTag/elbv2.k8s.aws/cluster: 'false'
+
+              - Sid: ELBCreateResources
+                Effect: Allow
+                Action:
+                  - elasticloadbalancing:CreateLoadBalancer
+                  - elasticloadbalancing:CreateTargetGroup
+                Resource: '*'
+                Condition:
+                  'Null':
+                    aws:RequestTag/elbv2.k8s.aws/cluster: 'false'
+
+              - Sid: ELBListenerAndRules
+                Effect: Allow
+                Action:
+                  - elasticloadbalancing:CreateListener
+                  - elasticloadbalancing:DeleteListener
+                  - elasticloadbalancing:CreateRule
+                  - elasticloadbalancing:DeleteRule
+                Resource: '*'
+
+              - Sid: ELBAddTagsOnCreate
+                Effect: Allow
+                Action:
+                  - elasticloadbalancing:AddTags
+                  - elasticloadbalancing:RemoveTags
+                Resource:
+                  - !Sub 'arn:aws:elasticloadbalancing:*:${AWS::AccountId}:targetgroup/*/*'
+                  - !Sub 'arn:aws:elasticloadbalancing:*:${AWS::AccountId}:loadbalancer/net/*/*'
+                  - !Sub 'arn:aws:elasticloadbalancing:*:${AWS::AccountId}:loadbalancer/app/*/*'
+                Condition:
+                  'Null':
+                    aws:RequestTag/elbv2.k8s.aws/cluster: 'true'
+                    aws:ResourceTag/elbv2.k8s.aws/cluster: 'false'
+
+              - Sid: ELBAddTagsOnCreateActions
+                Effect: Allow
+                Action:
+                  - elasticloadbalancing:AddTags
+                  - elasticloadbalancing:RemoveTags
+                Resource:
+                  - !Sub 'arn:aws:elasticloadbalancing:*:${AWS::AccountId}:listener/net/*/*/*'
+                  - !Sub 'arn:aws:elasticloadbalancing:*:${AWS::AccountId}:listener/app/*/*/*'
+                  - !Sub 'arn:aws:elasticloadbalancing:*:${AWS::AccountId}:listener-rule/net/*/*/*'
+                  - !Sub 'arn:aws:elasticloadbalancing:*:${AWS::AccountId}:listener-rule/app/*/*/*'
+
+              - Sid: ELBAddTagsOnResourceCreation
+                Effect: Allow
+                Action:
+                  - elasticloadbalancing:AddTags
+                Resource:
+                  - !Sub 'arn:aws:elasticloadbalancing:*:${AWS::AccountId}:targetgroup/*/*'
+                  - !Sub 'arn:aws:elasticloadbalancing:*:${AWS::AccountId}:loadbalancer/net/*/*'
+                  - !Sub 'arn:aws:elasticloadbalancing:*:${AWS::AccountId}:loadbalancer/app/*/*'
+                Condition:
+                  StringEquals:
+                    elasticloadbalancing:CreateAction:
+                      - CreateTargetGroup
+                      - CreateLoadBalancer
+                  'Null':
+                    aws:RequestTag/elbv2.k8s.aws/cluster: 'false'
+
+              - Sid: ELBModifyLoadBalancer
+                Effect: Allow
+                Action:
+                  - elasticloadbalancing:ModifyLoadBalancerAttributes
+                  - elasticloadbalancing:SetIpAddressType
+                  - elasticloadbalancing:SetSecurityGroups
+                  - elasticloadbalancing:SetSubnets
+                  - elasticloadbalancing:DeleteLoadBalancer
+                  - elasticloadbalancing:ModifyTargetGroup
+                  - elasticloadbalancing:ModifyTargetGroupAttributes
+                  - elasticloadbalancing:DeleteTargetGroup
+                Resource: '*'
+                Condition:
+                  'Null':
+                    aws:ResourceTag/elbv2.k8s.aws/cluster: 'false'
+
+              - Sid: ELBRegisterTargets
+                Effect: Allow
+                Action:
+                  - elasticloadbalancing:RegisterTargets
+                  - elasticloadbalancing:DeregisterTargets
+                Resource: !Sub 'arn:aws:elasticloadbalancing:*:${AWS::AccountId}:targetgroup/*/*'
+
+              - Sid: ELBDescribeAll
+                Effect: Allow
+                Action:
+                  - elasticloadbalancing:DescribeLoadBalancers
+                  - elasticloadbalancing:DescribeLoadBalancerAttributes
+                  - elasticloadbalancing:DescribeListeners
+                  - elasticloadbalancing:DescribeListenerAttributes
+                  - elasticloadbalancing:DescribeListenerCertificates
+                  - elasticloadbalancing:DescribeSSLPolicies
+                  - elasticloadbalancing:DescribeRules
+                  - elasticloadbalancing:DescribeTargetGroups
+                  - elasticloadbalancing:DescribeTargetGroupAttributes
+                  - elasticloadbalancing:DescribeTargetHealth
+                  - elasticloadbalancing:DescribeTags
+                  - elasticloadbalancing:DescribeTrustStores
+                Resource: '*'
+
+              - Sid: ELBSetWebAcl
+                Effect: Allow
+                Action:
+                  - elasticloadbalancing:SetWebAcl
+                Resource: '*'
+
+              - Sid: CognitoDescribe
+                Effect: Allow
+                Action:
+                  - cognito-idp:DescribeUserPoolClient
+                Resource: '*'
+
+              - Sid: ACMActions
+                Effect: Allow
+                Action:
+                  - acm:ListCertificates
+                  - acm:DescribeCertificate
+                Resource: '*'
+
+              - Sid: IAMServerCertificates
+                Effect: Allow
+                Action:
+                  - iam:ListServerCertificates
+                  - iam:GetServerCertificate
+                Resource: '*'
+
+              - Sid: WAFv2Actions
+                Effect: Allow
+                Action:
+                  - wafv2:GetWebACL
+                  - wafv2:GetWebACLForResource
+                  - wafv2:AssociateWebACL
+                  - wafv2:DisassociateWebACL
+                Resource: '*'
+
+              - Sid: ShieldActions
+                Effect: Allow
+                Action:
+                  - shield:GetSubscriptionState
+                  - shield:DescribeProtection
+                  - shield:CreateProtection
+                  - shield:DeleteProtection
+                Resource: '*'
+
+              - Sid: WAFRegionalActions
+                Effect: Allow
+                Action:
+                  - waf-regional:GetWebACLForResource
+                  - waf-regional:GetWebACL
+                  - waf-regional:AssociateWebACL
+                  - waf-regional:DisassociateWebACL
+                Resource: '*'
+
+              - Sid: TagActions
+                Effect: Allow
+                Action:
+                  - tag:GetResources
+                  - tag:TagResources
+                Resource: '*'
+
+Outputs:
+  LBControllerRoleArn:
+    Description: ARN of the AWS Load Balancer Controller IAM Role
+    Value: !GetAtt LBControllerRole.Arn
+    Export:
+      Name: local-llm-llama-lb-controller-RoleArn

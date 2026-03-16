@@ -1,0 +1,41 @@
+# vLLM Production Stack - Phase 1: LLaMA 3.1 8B Instruct
+# Chart: vllm/vllm-stack
+
+servingEngineSpec:
+  modelSpec:
+    - name: "llama-3-1-8b"
+      repository: "vllm/vllm-openai"
+      tag: "latest"
+      modelURL: "meta-llama/Llama-3.1-8B-Instruct"
+      replicaCount: 1
+      requestCPU: 2
+      requestMemory: "8Gi"
+      requestGPU: 1
+
+      vllmConfig:
+        dtype: "auto"
+        gpuMemoryUtilization: 0.90
+        maxModelLen: 131072
+        tensorParallelSize: 1
+        extraArgs:
+          - "--enable-auto-tool-choice"
+          - "--tool-call-parser"
+          - "llama3_json"
+          - "--quantization"
+          - "fp8"
+          - "--kv-cache-dtype"
+          - "fp8"
+
+      hf_token:
+        secretName: "hf-token-secret"
+        secretKey: "token"
+
+  tolerations:
+    - key: "nvidia.com/gpu"
+      operator: "Exists"
+      effect: "NoSchedule"
+
+routerSpec:
+  replicaCount: 1
+  requestCPU: 1
+  requestMemory: "2Gi"

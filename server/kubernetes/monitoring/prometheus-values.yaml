@@ -1,0 +1,81 @@
+# kube-prometheus-stack Helm values for LLaMA EKS monitoring
+
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 20Gi
+          storageClassName: gp2
+    additionalScrapeConfigs:
+      - job_name: "vllm-metrics"
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - vllm
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: "true"
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            target_label: __address__
+            regex: (.+)
+            replacement: ${1}:8000
+      - job_name: "dcgm-metrics"
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - monitoring
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: "dcgm-exporter"
+          - source_labels: [__meta_kubernetes_pod_ip]
+            action: replace
+            target_label: __address__
+            regex: (.+)
+            replacement: ${1}:9400
+
+grafana:
+  enabled: true
+  adminPassword: "${GRAFANA_ADMIN_PASSWORD}"
+  service:
+    type: ClusterIP
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: "default"
+          folder: ""
+          type: file
+          options:
+            path: /var/lib/grafana/dashboards/default
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClassName: gp2
+
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+          storageClassName: gp2
+
+nodeExporter:
+  enabled: true
+
+kubeStateMetrics:
+  enabled: true

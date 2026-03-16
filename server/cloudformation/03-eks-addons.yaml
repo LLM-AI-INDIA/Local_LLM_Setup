@@ -1,0 +1,48 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  EKS managed add-ons for the Llama EKS cluster.
+  Stack name: local-llm-llama-eks-addons
+
+Resources:
+  VpcCniAddon:
+    Type: AWS::EKS::Addon
+    Properties:
+      AddonName: vpc-cni
+      ClusterName: !ImportValue local-llm-llama-eks-ClusterName
+      AddonVersion: v1.19.0-eksbuild.1
+      ResolveConflicts: OVERWRITE
+
+  CoreDnsAddon:
+    Type: AWS::EKS::Addon
+    Properties:
+      AddonName: coredns
+      ClusterName: !ImportValue local-llm-llama-eks-ClusterName
+      AddonVersion: v1.11.3-eksbuild.2
+      ResolveConflicts: OVERWRITE
+
+  KubeProxyAddon:
+    Type: AWS::EKS::Addon
+    Properties:
+      AddonName: kube-proxy
+      ClusterName: !ImportValue local-llm-llama-eks-ClusterName
+      AddonVersion: v1.31.2-eksbuild.3
+      ResolveConflicts: OVERWRITE
+
+Outputs:
+  VpcCniAddonVersion:
+    Description: VPC CNI add-on version
+    Value: v1.19.0-eksbuild.1
+    Export:
+      Name: local-llm-llama-eks-addons-VpcCniVersion
+
+  CoreDnsAddonVersion:
+    Description: CoreDNS add-on version
+    Value: v1.11.3-eksbuild.2
+    Export:
+      Name: local-llm-llama-eks-addons-CoreDnsVersion
+
+  KubeProxyAddonVersion:
+    Description: kube-proxy add-on version
+    Value: v1.31.2-eksbuild.3
+    Export:
+      Name: local-llm-llama-eks-addons-KubeProxyVersion

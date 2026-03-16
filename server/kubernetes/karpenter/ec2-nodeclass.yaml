@@ -1,0 +1,25 @@
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: gpu-nodes
+spec:
+  role: "KarpenterNodeRole-local-llm-llama-eks"
+  amiFamily: AL2
+  amiSelectorTerms:
+    - id: ami-0bd3f55313f823c79
+  subnetSelectorTerms:
+    - tags:
+        kubernetes.io/role/internal-elb: "1"
+        kubernetes.io/cluster/local-llm-llama-eks: "shared"
+  securityGroupSelectorTerms:
+    - tags:
+        kubernetes.io/cluster/local-llm-llama-eks: "owned"
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        volumeSize: 100Gi
+        volumeType: gp3
+        encrypted: true
+        deleteOnTermination: true
+  tags:
+    Name: "local-llm-llama-eks-gpu-node"
